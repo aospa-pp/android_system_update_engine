@@ -35,7 +35,6 @@
 #include "update_engine/common/action_processor.h"
 #include "update_engine/common/boot_control_interface.h"
 #include "update_engine/common/error_code_utils.h"
-#include "update_engine/common/platform_constants.h"
 #include "update_engine/common/subprocess.h"
 #include "update_engine/common/utils.h"
 
@@ -113,8 +112,15 @@ void PostinstallRunnerAction::PerformAction() {
   // If we are switching slots, then we are required to MapAllPartitions,
   // as FinishUpdate() requires all partitions to be mapped.
   // And switching slots requires FinishUpdate() to be called first
-  if (dynamic_control->GetVirtualAbFeatureFlag().IsEnabled() &&
-      !constants::kIsRecovery) {
+  // The kIsRecovery guard introduced by "Fix sideload OTA breakage"
+  // (Ief560ef8, bug 320206874) assumed MapAllSnapshots cannot work in
+  // recovery. It does work, and the filesystem verifier itself relies on
+  // it. Without the mapping here, post-install always fails to mount the
+  // target partitions with kPostInstallMountError for recovery sideloads
+  // of Virtual A/B Compression updates, because the verifier unmaps them
+  // after hashing when the payload carries no verity information (e.g.
+  // EROFS without hash trees).
+  if (dynamic_control->GetVirtualAbFeatureFlag().IsEnabled()) {
     if (!install_plan_.partitions.empty() ||
         install_plan_.switch_slot_on_reboot) {
       if (!dynamic_control->MapAllPartitions()) {
